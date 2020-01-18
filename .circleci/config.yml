@@ -41,6 +41,11 @@ jobs:
             . ~/.venv/bin/activate
             make lint
       - run:
+          name: Check type annotations
+          command: |
+            . ~/.venv/bin/activate
+            make typecheck
+      - run:
           command: |
             . ~/.venv/bin/activate
             make test
@@ -72,7 +77,6 @@ jobs:
             python deploy/vbump.py
             poetry build
             poetry publish --username $PYPI_USERNAME --password $PYPI_PASSWORD
-
 
 workflows:
   version: 2

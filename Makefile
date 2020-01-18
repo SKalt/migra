@@ -25,3 +25,6 @@ fmt:
 
 lint:
 	flake8 .
+
+typecheck:
+	mypy --strict .
