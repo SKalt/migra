@@ -1,8 +1,7 @@
-from __future__ import print_function, unicode_literals
-
 import argparse
 import sys
 from contextlib import contextmanager
+from typing import Generator, Sequence
 
 from sqlbag import S
 
@@ -11,7 +10,7 @@ from .statements import UnsafeMigrationException
 
 
 @contextmanager
-def arg_context(x):
+def arg_context(x: str) -> Generator:
     if x == "EMPTY":
         yield None
 
@@ -20,7 +19,7 @@ def arg_context(x):
             yield s
 
 
-def parse_args(args):
+def parse_args(args: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate a database migration.")
     parser.add_argument(
         "--unsafe",

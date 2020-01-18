@@ -2,7 +2,7 @@ from __future__ import unicode_literals
 
 from sqlbag import raw_execute
 
-from schemainspect import DBInspector, get_inspector
+from schemainspect import DBInspector, get_inspector  # TODO: stub schemainspect
 
 from .changes import Changes
 from .statements import Statements
@@ -11,7 +11,7 @@ from .statements import Statements
 class Migration(object):
     """
     The main class of migra
-    """
+    """  # _ what does it do?
 
     def __init__(self, x_from, x_target, schema=None):
         self.statements = Statements()
@@ -37,6 +37,7 @@ class Migration(object):
         self.changes.i_target = get_inspector(self.s_target, schema=self.schema)
 
     def clear(self):
+        "Empty this Migration's statements"
         self.statements = Statements()
 
     def apply(self):

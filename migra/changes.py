@@ -1,12 +1,12 @@
-from __future__ import unicode_literals
-
 from collections import OrderedDict as od
 from functools import partial
+from typing import Callable, Tuple
 
 from .statements import Statements
 from .util import differences
+# from .types import Literal
 
-THINGS = [
+THINGS = (
     "schemas",
     "enums",
     "sequences",
@@ -19,18 +19,19 @@ THINGS = [
     "collations",
     "rlspolicies",
     "triggers",
-]
+)
 PK = "PRIMARY KEY"
+
 
 
 def statements_for_changes(
     things_from,
     things_target,
-    creations_only=False,
-    drops_only=False,
-    modifications=True,
-    dependency_ordering=False,
-    add_dependents_for_modified=False,
+    creations_only: bool = False,
+    drops_only: bool = False,
+    modifications: bool = True,
+    dependency_ordering: bool = False,
+    add_dependents_for_modified: bool = False,
 ):
     added, removed, modified, unmodified = differences(things_from, things_target)
 
@@ -48,14 +49,14 @@ def statements_for_changes(
 
 
 def statements_from_differences(
-    added,
-    removed,
-    modified,
+    added: od,
+    removed: od,
+    modified: od,
     replaceable=None,
-    creations_only=False,
-    drops_only=False,
-    modifications=True,
-    dependency_ordering=False,
+    creations_only: bool = False,
+    drops_only: bool = False,
+    modifications: bool = True,
+    dependency_ordering: bool = False,
     old=None,
 ):
     replaceable = replaceable or set()
@@ -200,7 +201,7 @@ def get_selectable_changes(
     selectables_target,
     enums_from,
     enums_target,
-    add_dependents_for_modified=True,
+    add_dependents_for_modified: bool = True,
 ):
     tables_from = od((k, v) for k, v in selectables_from.items() if v.is_table)
     tables_target = od((k, v) for k, v in selectables_target.items() if v.is_table)
@@ -281,7 +282,7 @@ class Changes(object):
         self.i_from = i_from
         self.i_target = i_target
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: AllowedThings) -> Callable:
         if name == "non_pk_constraints":
             a = self.i_from.constraints.items()
             b = self.i_target.constraints.items()

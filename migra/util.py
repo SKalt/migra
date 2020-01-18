@@ -1,9 +1,10 @@
-from __future__ import unicode_literals
-
+from typing import Tuple
 from collections import OrderedDict as od
 
 
-def differences(a, b, add_dependencies_for_modifications=True):
+def differences(
+    a: dict, b: dict, add_dependencies_for_modifications: bool = True
+) -> Tuple[od, od, od, od]:
     a_keys = set(a.keys())
     b_keys = set(b.keys())
     keys_added = set(b_keys) - set(a_keys)
