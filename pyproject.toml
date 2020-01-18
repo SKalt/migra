@@ -10,7 +10,7 @@ repository = "https://github.com/djrobstep/migra"
 homepage = "https://migra.djrobstep.com/"
 
 [tool.poetry.dependencies]
-python = "*"
+python = ">=3.6"
 sqlbag = "*"
 six = "*"
 schemainspect = ">=0.1.1576671014"
@@ -25,6 +25,7 @@ psycopg2-binary = "*"
 flake8 = "*"
 isort = "*"
 black = { version = ">=19.10b0", python=">=3.6" }
+mypy = "^0.761"
 
 [tool.poetry.scripts]
 migra = 'migra:do_command'
