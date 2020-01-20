@@ -1,8 +1,5 @@
-from __future__ import unicode_literals
-
+from schemainspect import DBInspector, get_inspector
 from sqlbag import raw_execute
-
-from schemainspect import DBInspector, get_inspector  # TODO: stub schemainspect
 
 from .changes import Changes
 from .statements import Statements
@@ -13,7 +10,12 @@ class Migration(object):
     The main class of migra
     """  # _ what does it do?
 
-    def __init__(self, x_from, x_target, schema=None):
+    def __init__(
+        self,
+        x_from: Union[str, DBInspector],
+        x_target: Union[str, DBInspector],
+        schema=None,
+    ) -> None:  # suggestion: x_from -> "source", x_target -> "target"
         self.statements = Statements()
         self.changes = Changes(None, None)
         self.schema = schema
@@ -36,11 +38,11 @@ class Migration(object):
     def inspect_target(self):
         self.changes.i_target = get_inspector(self.s_target, schema=self.schema)
 
-    def clear(self):
+    def clear(self) -> None:
         "Empty this Migration's statements"
         self.statements = Statements()
 
-    def apply(self):
+    def apply(self) -> None:
         for stmt in self.statements:
             raw_execute(self.s_from, stmt)
         self.changes.i_from = get_inspector(self.s_from, schema=self.schema)
@@ -48,22 +50,22 @@ class Migration(object):
         self.clear()
         self.set_safety(safety_on)
 
-    def add(self, statements):
+    def add(self, statements) -> None:
         self.statements += statements
 
-    def add_sql(self, sql):
+    def add_sql(self, sql) -> None:
         self.statements += Statements([sql])
 
-    def set_safety(self, safety_on):
+    def set_safety(self, safety_on) -> None:
         self.statements.safe = safety_on
 
-    def add_extension_changes(self, creates=True, drops=True):
+    def add_extension_changes(self, creates: bool = True, drops: bool = True) -> None:
         if creates:
             self.add(self.changes.extensions(creations_only=True))
         if drops:
             self.add(self.changes.extensions(drops_only=True))
 
-    def add_all_changes(self, privileges=False):
+    def add_all_changes(self, privileges: bool = False) -> None:
         self.add(self.changes.schemas(creations_only=True))
 
         self.add(self.changes.extensions(creations_only=True))
@@ -94,5 +96,5 @@ class Migration(object):
         self.add(self.changes.schemas(drops_only=True))
 
     @property
-    def sql(self):
+    def sql(self) -> str:
         return self.statements.sql

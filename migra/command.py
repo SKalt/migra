@@ -61,7 +61,7 @@ def parse_args(args: Sequence[str]) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
-def run(args, out=None, err=None):
+def run(args, out=None, err=None) -> int:
     schema = args.schema
     if not out:
         out = sys.stdout  # pragma: no cover
@@ -95,7 +95,7 @@ def run(args, out=None, err=None):
             return 2
 
 
-def do_command():  # pragma: no cover
+def do_command() -> None:  # pragma: no cover
     args = parse_args(sys.argv[1:])
     status = run(args)
     sys.exit(status)

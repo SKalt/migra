@@ -1,13 +1,12 @@
-from __future__ import unicode_literals
-
 import io
+from typing import Tuple
 
 from pytest import raises
+from schemainspect import get_inspector
 from sqlbag import S, load_sql_from_file, temporary_database
 
 from migra import Migration, Statements, UnsafeMigrationException
 from migra.command import parse_args, run
-from schemainspect import get_inspector
 
 SQL = """select 1;
 
@@ -17,7 +16,7 @@ select 2;
 DROP = "drop table x;"
 
 
-def test_statements():
+def test_statements() -> None:
     s1 = Statements(["select 1;"])
     s2 = Statements(["select 2;"])
     s3 = s1 + s2
@@ -30,51 +29,51 @@ def test_statements():
     assert s3.sql == SQL_WITH_DROP
 
 
-def outs():
+def outs() -> Tuple[io.StringIO, io.StringIO]:
     return io.StringIO(), io.StringIO()
 
 
-def test_deps():
+def test_deps() -> None:
     for FIXTURE_NAME in ["dependencies", "dependencies2", "dependencies3"]:
         do_fixture_test(FIXTURE_NAME)
 
 
-def test_everything():
+def test_everything() -> None:
     for FIXTURE_NAME in ["everything"]:
         do_fixture_test(FIXTURE_NAME, with_privileges=True)
 
 
-def test_partitioning():
+def test_partitioning() -> None:
     for FIXTURE_NAME in ["partitioning"]:
         do_fixture_test(FIXTURE_NAME)
 
 
-def test_inherit():
+def test_inherit() -> None:
     for FIXTURE_NAME in ["inherit"]:
         do_fixture_test(FIXTURE_NAME)
 
 
-def test_collations():
+def test_collations() -> None:
     for FIXTURE_NAME in ["collations"]:
         do_fixture_test(FIXTURE_NAME)
 
 
-def test_triggers():
+def test_triggers() -> None:
     for FIXTURE_NAME in ["triggers", "triggers2"]:
         do_fixture_test(FIXTURE_NAME)
 
 
-def test_singleschemea():
+def test_singleschemea() -> None:
     for FIXTURE_NAME in ["singleschema"]:
         do_fixture_test(FIXTURE_NAME, schema="goodschema")
 
 
-def test_singleschema_ext():
+def test_singleschema_ext() -> None:
     for FIXTURE_NAME in ["singleschema_ext"]:
         do_fixture_test(FIXTURE_NAME, create_extensions_only=True)
 
 
-def test_privs():
+def test_privs() -> None:
     for FIXTURE_NAME in ["privileges"]:
         do_fixture_test(FIXTURE_NAME, with_privileges=True)
 
@@ -82,7 +81,7 @@ def test_privs():
 schemainspect_test_role = "schemainspect_test_role"
 
 
-def create_role(s, rolename):
+def create_role(s, rolename) -> None:
     role = s.execute(
         f"""
 SELECT 1 FROM pg_roles WHERE rolname=:rolename
@@ -100,14 +99,14 @@ SELECT 1 FROM pg_roles WHERE rolname=:rolename
         )
 
 
-def test_rls():
+def test_rls() -> None:
     for FIXTURE_NAME in ["rls"]:
         do_fixture_test(FIXTURE_NAME, with_privileges=True)
 
 
 def do_fixture_test(
     fixture_name, schema=None, create_extensions_only=False, with_privileges=False
-):
+) -> None:
     flags = ["--unsafe"]
     if schema:
         flags += ["--schema", schema]

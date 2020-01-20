@@ -1,10 +1,16 @@
 from collections import OrderedDict as od
 from functools import partial
-from typing import Callable, Tuple
+from typing import Any, Callable, Dict, Hashable, Set, Tuple, TypeVar, Union
+
+from schemainspect import DBInspector, InspectedSelectable, get_inspector
 
 from .statements import Statements
-from .util import differences
+from .util import _differences, differences
+
 # from .types import Literal
+V = TypeVar("V")
+T = TypeVar("T")
+E = TypeVar("E")
 
 THINGS = (
     "schemas",
@@ -23,23 +29,22 @@ THINGS = (
 PK = "PRIMARY KEY"
 
 
-
 def statements_for_changes(
-    things_from,
-    things_target,
+    things_from: Dict[str, V],
+    things_target: Dict[str, V],
     creations_only: bool = False,
     drops_only: bool = False,
     modifications: bool = True,
     dependency_ordering: bool = False,
     add_dependents_for_modified: bool = False,
-):
+) -> Statements:
     added, removed, modified, unmodified = differences(things_from, things_target)
 
     return statements_from_differences(
         added=added,
         removed=removed,
         modified=modified,
-        replaceable=None,
+        replaceable=set(),
         creations_only=creations_only,
         drops_only=drops_only,
         modifications=modifications,
@@ -49,17 +54,17 @@ def statements_for_changes(
 
 
 def statements_from_differences(
-    added: od,
-    removed: od,
-    modified: od,
-    replaceable=None,
+    added: Dict[str, InspectedSelectable],
+    removed: Dict[str, InspectedSelectable],
+    modified: Dict[str, InspectedSelectable],
+    replaceable: Set[str] = set(),
     creations_only: bool = False,
     drops_only: bool = False,
     modifications: bool = True,
     dependency_ordering: bool = False,
-    old=None,
-):
-    replaceable = replaceable or set()
+    old: Dict[str, V] = {},
+) -> Statements:
+    replaceable, old = replaceable or set(), old or {}
     statements = Statements()
     if not creations_only:
         pending_drops = set(removed)
@@ -74,13 +79,17 @@ def statements_from_differences(
     else:
         pending_creations = set()
 
-    def has_remaining_dependents(v, pending_drops):
+    def has_remaining_dependents(
+        v: InspectedSelectable, pending_drops: Set[str]
+    ) -> bool:
         if not dependency_ordering:
             return False
 
         return bool(set(v.dependents) & pending_drops)
 
-    def has_uncreated_dependencies(v, pending_creations):
+    def has_uncreated_dependencies(
+        v: InspectedSelectable, pending_creations: Set[str]
+    ) -> bool:
         if not dependency_ordering:
             return False
 
@@ -120,20 +129,25 @@ def statements_from_differences(
             after == before
         ):  # this should never happen because there shouldn't be circular dependencies
             raise ValueError("cannot resolve dependencies")  # pragma: no cover
+            # _ could use more debug info
 
     return statements
 
 
-def get_enum_modifications(tables_from, tables_target, enums_from, enums_target):
-    _, _, e_modified, _ = differences(enums_from, enums_target)
-    _, _, t_modified, _ = differences(tables_from, tables_target)
-    pre = Statements()
-    recreate = Statements()
-    post = Statements()
-    enums_to_change = e_modified
-    for t, v in t_modified.items():
-        t_before = tables_from[t]
-        _, _, c_modified, _ = differences(t_before.columns, v.columns)
+def get_enum_modifications(
+    tables_from: Dict[str, T],
+    tables_target: Dict[str, T],
+    enums_from: Dict[str, E],
+    enums_target: Dict[str, E],
+) -> Statements:
+    enums_modified: Dict[str, Any] = differences(enums_from, enums_target)[2]
+    tables_modified: Dict[str, Any] = differences(tables_from, tables_target)[2]
+    pre, recreate, post = Statements(), Statements(), Statements()
+
+    enums_to_change = enums_modified
+    for table, v in tables_modified.items():
+        t_before = tables_from[table]
+        c_modified = differences(t_before.columns, v.columns)[2]
         for k, c in c_modified.items():
             before = t_before.columns[k]
             if (
@@ -141,15 +155,20 @@ def get_enum_modifications(tables_from, tables_target, enums_from, enums_target)
                 and c.dbtypestr == before.dbtypestr
                 and c.enum != before.enum
             ):
-                pre.append(before.change_enum_to_string_statement(t))
-                post.append(before.change_string_to_enum_statement(t))
+                pre.append(before.change_enum_to_string_statement(table))
+                post.append(before.change_string_to_enum_statement(table))
     for e in enums_to_change.values():
         recreate.append(e.drop_statement)
         recreate.append(e.create_statement)
     return pre + recreate + post
 
 
-def get_table_changes(tables_from, tables_target, enums_from, enums_target):
+def get_table_changes(
+    tables_from: Dict[str, V],
+    tables_target: Dict[str, V],
+    enums_from: Dict[str, V],
+    enums_target: Dict[str, V],
+) -> Statements:
     added, removed, modified, _ = differences(tables_from, tables_target)
 
     statements = Statements()
@@ -197,12 +216,12 @@ def get_table_changes(tables_from, tables_target, enums_from, enums_target):
 
 
 def get_selectable_changes(
-    selectables_from,
-    selectables_target,
-    enums_from,
-    enums_target,
+    selectables_from: InspectedSelectable,
+    selectables_target: InspectedSelectable,
+    enums_from: Dict[str, E],
+    enums_target: Dict[str, E],
     add_dependents_for_modified: bool = True,
-):
+) -> Statements:
     tables_from = od((k, v) for k, v in selectables_from.items() if v.is_table)
     tables_target = od((k, v) for k, v in selectables_target.items() if v.is_table)
 
@@ -245,7 +264,7 @@ def get_selectable_changes(
     replaceable -= not_replaceable
     statements = Statements()
 
-    def functions(d):
+    def functions(d: Dict[str, V]) -> Dict[str, V]:
         return {k: v for k, v in d.items() if v.relationtype == "f"}
 
     statements += statements_from_differences(
@@ -278,11 +297,17 @@ def get_selectable_changes(
 
 
 class Changes(object):
-    def __init__(self, i_from, i_target):
+    def __init__(
+        self, i_from: Union[str, DBInspector], i_target: Union[str, DBInspector]
+    ) -> None:
         self.i_from = i_from
         self.i_target = i_target
 
-    def __getattr__(self, name: AllowedThings) -> Callable:
+    def __getattr__(
+        self, name: str
+    ) -> Union[
+        Callable[[bool, bool, bool, bool], Statements], Callable[[bool], Statements],
+    ]:
         if name == "non_pk_constraints":
             a = self.i_from.constraints.items()
             b = self.i_target.constraints.items()
