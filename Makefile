@@ -27,4 +27,4 @@ lint:
 	flake8 .
 
 typecheck:
-	mypy --strict .
+	MYPY_PATH=./stubs mypy --strict .

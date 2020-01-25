@@ -1,4 +1,8 @@
-from schemainspect import DBInspector, get_inspector
+from typing import Optional, Union
+
+from schemainspect import DBInspector, NullInspector, get_inspector
+from sqlalchemy.engine import Connection
+from sqlalchemy.orm import Session
 from sqlbag import raw_execute
 
 from .changes import Changes
@@ -12,9 +16,9 @@ class Migration(object):
 
     def __init__(
         self,
-        x_from: Union[str, DBInspector],
-        x_target: Union[str, DBInspector],
-        schema=None,
+        x_from: Union[Connection, Session, DBInspector, NullInspector],
+        x_target: Union[Connection, Session, DBInspector, NullInspector],
+        schema: Optional[str] = None,
     ) -> None:  # suggestion: x_from -> "source", x_target -> "target"
         self.statements = Statements()
         self.changes = Changes(None, None)
@@ -32,10 +36,10 @@ class Migration(object):
             if x_target:
                 self.s_target = x_target
 
-    def inspect_from(self):
+    def inspect_from(self) -> None:
         self.changes.i_from = get_inspector(self.s_from, schema=self.schema)
 
-    def inspect_target(self):
+    def inspect_target(self) -> None:
         self.changes.i_target = get_inspector(self.s_target, schema=self.schema)
 
     def clear(self) -> None:
@@ -50,13 +54,13 @@ class Migration(object):
         self.clear()
         self.set_safety(safety_on)
 
-    def add(self, statements) -> None:
+    def add(self, statements: Statements) -> None:
         self.statements += statements
 
-    def add_sql(self, sql) -> None:
+    def add_sql(self, sql: str) -> None:
         self.statements += Statements([sql])
 
-    def set_safety(self, safety_on) -> None:
+    def set_safety(self, safety_on: bool) -> None:
         self.statements.safe = safety_on
 
     def add_extension_changes(self, creates: bool = True, drops: bool = True) -> None:

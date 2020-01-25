@@ -1,5 +1,5 @@
 import io
-from typing import Tuple
+from typing import Optional, Tuple
 
 from pytest import raises
 from schemainspect import get_inspector
@@ -81,7 +81,7 @@ def test_privs() -> None:
 schemainspect_test_role = "schemainspect_test_role"
 
 
-def create_role(s, rolename) -> None:
+def create_role(s: S, rolename: str) -> None:
     role = s.execute(
         f"""
 SELECT 1 FROM pg_roles WHERE rolname=:rolename
@@ -105,7 +105,10 @@ def test_rls() -> None:
 
 
 def do_fixture_test(
-    fixture_name, schema=None, create_extensions_only=False, with_privileges=False
+    fixture_name: str,
+    schema: Optional[str] = None,
+    create_extensions_only: bool = False,
+    with_privileges: bool = False,
 ) -> None:
     flags = ["--unsafe"]
     if schema:
@@ -150,7 +153,7 @@ def do_fixture_test(
             m.inspect_from()
             m.inspect_target()
             with raises(AttributeError):
-                m.changes.nonexist
+                m.changes.nonexist  # type: ignore
             m.set_safety(False)
             if ADDITIONS:
                 m.add_sql(ADDITIONS)

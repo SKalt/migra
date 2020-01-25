@@ -1,7 +1,7 @@
 import argparse
 import sys
 from contextlib import contextmanager
-from typing import Generator, Sequence
+from typing import Iterator, Optional, Sequence, TextIO
 
 from sqlbag import S
 
@@ -10,7 +10,7 @@ from .statements import UnsafeMigrationException
 
 
 @contextmanager
-def arg_context(x: str) -> Generator:
+def arg_context(x: str) -> Iterator[Optional[S]]:
     if x == "EMPTY":
         yield None
 
@@ -61,12 +61,10 @@ def parse_args(args: Sequence[str]) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
-def run(args, out=None, err=None) -> int:
+def run(
+    args: argparse.Namespace, out: TextIO = sys.stdout, err: TextIO = sys.stderr
+) -> int:
     schema = args.schema
-    if not out:
-        out = sys.stdout  # pragma: no cover
-    if not err:
-        err = sys.stderr  # pragma: no cover
     with arg_context(args.dburl_from) as ac0, arg_context(args.dburl_target) as ac1:
         m = Migration(ac0, ac1, schema=schema)
         if args.unsafe:

@@ -1,37 +1,17 @@
 from collections import OrderedDict as od
-from functools import partial
-from typing import Any, Callable, Dict, Hashable, Set, Tuple, TypeVar, Union
+from typing import Dict, Set
 
-from schemainspect import DBInspector, InspectedSelectable, get_inspector
+from schemainspect import DBInspector, Inspected
 
 from .statements import Statements
-from .util import _differences, differences
+from .util import differences
 
-# from .types import Literal
-V = TypeVar("V")
-T = TypeVar("T")
-E = TypeVar("E")
-
-THINGS = (
-    "schemas",
-    "enums",
-    "sequences",
-    "constraints",
-    "functions",
-    "views",
-    "indexes",
-    "extensions",
-    "privileges",
-    "collations",
-    "rlspolicies",
-    "triggers",
-)
 PK = "PRIMARY KEY"
 
 
 def statements_for_changes(
-    things_from: Dict[str, V],
-    things_target: Dict[str, V],
+    things_from: Dict[str, Inspected],
+    things_target: Dict[str, Inspected],
     creations_only: bool = False,
     drops_only: bool = False,
     modifications: bool = True,
@@ -54,15 +34,15 @@ def statements_for_changes(
 
 
 def statements_from_differences(
-    added: Dict[str, InspectedSelectable],
-    removed: Dict[str, InspectedSelectable],
-    modified: Dict[str, InspectedSelectable],
+    added: Dict[str, Inspected],
+    removed: Dict[str, Inspected],
+    modified: Dict[str, Inspected],
     replaceable: Set[str] = set(),
     creations_only: bool = False,
     drops_only: bool = False,
     modifications: bool = True,
     dependency_ordering: bool = False,
-    old: Dict[str, V] = {},
+    old: Dict[str, Inspected] = {},
 ) -> Statements:
     replaceable, old = replaceable or set(), old or {}
     statements = Statements()
@@ -79,17 +59,13 @@ def statements_from_differences(
     else:
         pending_creations = set()
 
-    def has_remaining_dependents(
-        v: InspectedSelectable, pending_drops: Set[str]
-    ) -> bool:
+    def has_remaining_dependents(v: Inspected, pending_drops: Set[str]) -> bool:
         if not dependency_ordering:
             return False
 
         return bool(set(v.dependents) & pending_drops)
 
-    def has_uncreated_dependencies(
-        v: InspectedSelectable, pending_creations: Set[str]
-    ) -> bool:
+    def has_uncreated_dependencies(v: Inspected, pending_creations: Set[str]) -> bool:
         if not dependency_ordering:
             return False
 
@@ -135,13 +111,13 @@ def statements_from_differences(
 
 
 def get_enum_modifications(
-    tables_from: Dict[str, T],
-    tables_target: Dict[str, T],
-    enums_from: Dict[str, E],
-    enums_target: Dict[str, E],
+    tables_from: Dict[str, Inspected],
+    tables_target: Dict[str, Inspected],
+    enums_from: Dict[str, Inspected],
+    enums_target: Dict[str, Inspected],
 ) -> Statements:
-    enums_modified: Dict[str, Any] = differences(enums_from, enums_target)[2]
-    tables_modified: Dict[str, Any] = differences(tables_from, tables_target)[2]
+    enums_modified: Dict[str, Inspected] = differences(enums_from, enums_target)[2]
+    tables_modified: Dict[str, Inspected] = differences(tables_from, tables_target)[2]
     pre, recreate, post = Statements(), Statements(), Statements()
 
     enums_to_change = enums_modified
@@ -164,10 +140,10 @@ def get_enum_modifications(
 
 
 def get_table_changes(
-    tables_from: Dict[str, V],
-    tables_target: Dict[str, V],
-    enums_from: Dict[str, V],
-    enums_target: Dict[str, V],
+    tables_from: Dict[str, Inspected],
+    tables_target: Dict[str, Inspected],
+    enums_from: Dict[str, Inspected],
+    enums_target: Dict[str, Inspected],
 ) -> Statements:
     added, removed, modified, _ = differences(tables_from, tables_target)
 
@@ -216,10 +192,10 @@ def get_table_changes(
 
 
 def get_selectable_changes(
-    selectables_from: InspectedSelectable,
-    selectables_target: InspectedSelectable,
-    enums_from: Dict[str, E],
-    enums_target: Dict[str, E],
+    selectables_from: Inspected,
+    selectables_target: Inspected,
+    enums_from: Dict[str, Inspected],
+    enums_target: Dict[str, Inspected],
     add_dependents_for_modified: bool = True,
 ) -> Statements:
     tables_from = od((k, v) for k, v in selectables_from.items() if v.is_table)
@@ -264,7 +240,7 @@ def get_selectable_changes(
     replaceable -= not_replaceable
     statements = Statements()
 
-    def functions(d: Dict[str, V]) -> Dict[str, V]:
+    def functions(d: Dict[str, Inspected]) -> Dict[str, Inspected]:
         return {k: v for k, v in d.items() if v.relationtype == "f"}
 
     statements += statements_from_differences(
@@ -297,46 +273,273 @@ def get_selectable_changes(
 
 
 class Changes(object):
-    def __init__(
-        self, i_from: Union[str, DBInspector], i_target: Union[str, DBInspector]
-    ) -> None:
+    def __init__(self, i_from: DBInspector, i_target: DBInspector) -> None:
         self.i_from = i_from
         self.i_target = i_target
 
-    def __getattr__(
-        self, name: str
-    ) -> Union[
-        Callable[[bool, bool, bool, bool], Statements], Callable[[bool], Statements],
-    ]:
-        if name == "non_pk_constraints":
-            a = self.i_from.constraints.items()
-            b = self.i_target.constraints.items()
-            a_od = od((k, v) for k, v in a if v.constraint_type != PK)
-            b_od = od((k, v) for k, v in b if v.constraint_type != PK)
-            return partial(statements_for_changes, a_od, b_od)
+    def non_pk_constraints(
+        self,
+        creations_only: bool = False,
+        drops_only: bool = False,
+        modifications: bool = True,
+        dependency_ordering: bool = False,
+        add_dependents_for_modified: bool = False,
+    ) -> Statements:
+        a, b = (i.constraints.items() for i in (self.i_from, self.i_target))
+        a_od = dict((k, v) for k, v in a if v.constraint_type != PK)
+        b_od = dict((k, v) for k, v in b if v.constraint_type != PK)
+        return statements_for_changes(
+            a_od,
+            b_od,
+            creations_only=creations_only,
+            drops_only=drops_only,
+            modifications=modifications,
+            dependency_ordering=dependency_ordering,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )
 
-        elif name == "pk_constraints":
-            a = self.i_from.constraints.items()
-            b = self.i_target.constraints.items()
-            a_od = od((k, v) for k, v in a if v.constraint_type == PK)
-            b_od = od((k, v) for k, v in b if v.constraint_type == PK)
-            return partial(statements_for_changes, a_od, b_od)
+    def pk_constraints(
+        self,
+        creations_only: bool = False,
+        drops_only: bool = False,
+        modifications: bool = True,
+        dependency_ordering: bool = False,
+        add_dependents_for_modified: bool = False,
+    ) -> Statements:
+        a, b = (i.constraints.items() for i in (self.i_from, self.i_target))
+        a_od = od((k, v) for k, v in a if v.constraint_type == PK)
+        b_od = od((k, v) for k, v in b if v.constraint_type == PK)
+        return statements_for_changes(
+            a_od,
+            b_od,
+            creations_only=creations_only,
+            drops_only=drops_only,
+            modifications=modifications,
+            dependency_ordering=dependency_ordering,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )
 
-        elif name == "selectables":
-            return partial(
-                get_selectable_changes,
-                od(sorted(self.i_from.selectables.items())),
-                od(sorted(self.i_target.selectables.items())),
-                self.i_from.enums,
-                self.i_target.enums,
-            )
+    def selectables(self, add_dependents_for_modified: bool = True,) -> Statements:
+        return get_selectable_changes(
+            od(sorted(self.i_from.selectables.items())),
+            od(sorted(self.i_target.selectables.items())),
+            self.i_from.enums,
+            self.i_target.enums,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )
 
-        elif name in THINGS:
-            return partial(
-                statements_for_changes,
-                getattr(self.i_from, name),
-                getattr(self.i_target, name),
-            )
+    def schemas(
+        self,
+        creations_only: bool = False,
+        drops_only: bool = False,
+        modifications: bool = True,
+        dependency_ordering: bool = False,
+        add_dependents_for_modified: bool = False,
+    ) -> Statements:
+        return statements_for_changes(
+            self.i_from.schemas,
+            self.i_target.schemas,
+            creations_only=creations_only,
+            drops_only=drops_only,
+            modifications=modifications,
+            dependency_ordering=dependency_ordering,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )
 
-        else:
-            raise AttributeError(name)
+    def enums(
+        self,
+        creations_only: bool = False,
+        drops_only: bool = False,
+        modifications: bool = True,
+        dependency_ordering: bool = False,
+        add_dependents_for_modified: bool = False,
+    ) -> Statements:
+        return statements_for_changes(
+            self.i_from.enums,
+            self.i_target.enums,
+            creations_only=creations_only,
+            drops_only=drops_only,
+            modifications=modifications,
+            dependency_ordering=dependency_ordering,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )
+
+    def sequences(
+        self,
+        creations_only: bool = False,
+        drops_only: bool = False,
+        modifications: bool = True,
+        dependency_ordering: bool = False,
+        add_dependents_for_modified: bool = False,
+    ) -> Statements:
+        return statements_for_changes(
+            self.i_from.sequences,
+            self.i_target.sequences,
+            creations_only=creations_only,
+            drops_only=drops_only,
+            modifications=modifications,
+            dependency_ordering=dependency_ordering,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )
+
+    def constraints(
+        self,
+        creations_only: bool = False,
+        drops_only: bool = False,
+        modifications: bool = True,
+        dependency_ordering: bool = False,
+        add_dependents_for_modified: bool = False,
+    ) -> Statements:
+        return statements_for_changes(
+            self.i_from.constraints,
+            self.i_target.constraints,
+            creations_only=creations_only,
+            drops_only=drops_only,
+            modifications=modifications,
+            dependency_ordering=dependency_ordering,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )
+
+    def functions(
+        self,
+        creations_only: bool = False,
+        drops_only: bool = False,
+        modifications: bool = True,
+        dependency_ordering: bool = False,
+        add_dependents_for_modified: bool = False,
+    ) -> Statements:
+        return statements_for_changes(
+            self.i_from,
+            self.i_target,
+            creations_only=creations_only,
+            drops_only=drops_only,
+            modifications=modifications,
+            dependency_ordering=dependency_ordering,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )
+
+    def views(
+        self,
+        creations_only: bool = False,
+        drops_only: bool = False,
+        modifications: bool = True,
+        dependency_ordering: bool = False,
+        add_dependents_for_modified: bool = False,
+    ) -> Statements:
+        return statements_for_changes(
+            self.i_from.views,
+            self.i_target.views,
+            creations_only=creations_only,
+            drops_only=drops_only,
+            modifications=modifications,
+            dependency_ordering=dependency_ordering,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )
+
+    def indexes(
+        self,
+        creations_only: bool = False,
+        drops_only: bool = False,
+        modifications: bool = True,
+        dependency_ordering: bool = False,
+        add_dependents_for_modified: bool = False,
+    ) -> Statements:
+        return statements_for_changes(
+            self.i_from.indexes,
+            self.i_target.indexes,
+            creations_only=creations_only,
+            drops_only=drops_only,
+            modifications=modifications,
+            dependency_ordering=dependency_ordering,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )
+
+    def extensions(
+        self,
+        creations_only: bool = False,
+        drops_only: bool = False,
+        modifications: bool = True,
+        dependency_ordering: bool = False,
+        add_dependents_for_modified: bool = False,
+    ) -> Statements:
+        return statements_for_changes(
+            self.i_from.extensions,
+            self.i_target.extensions,
+            creations_only=creations_only,
+            drops_only=drops_only,
+            modifications=modifications,
+            dependency_ordering=dependency_ordering,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )
+
+    def privileges(
+        self,
+        creations_only: bool = False,
+        drops_only: bool = False,
+        modifications: bool = True,
+        dependency_ordering: bool = False,
+        add_dependents_for_modified: bool = False,
+    ) -> Statements:
+        return statements_for_changes(
+            self.i_from.privileges,
+            self.i_target.privileges,
+            creations_only=creations_only,
+            drops_only=drops_only,
+            modifications=modifications,
+            dependency_ordering=dependency_ordering,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )
+
+    def collations(
+        self,
+        creations_only: bool = False,
+        drops_only: bool = False,
+        modifications: bool = True,
+        dependency_ordering: bool = False,
+        add_dependents_for_modified: bool = False,
+    ) -> Statements:
+        return statements_for_changes(
+            self.i_from.collations,
+            self.i_target.collations,
+            creations_only=creations_only,
+            drops_only=drops_only,
+            modifications=modifications,
+            dependency_ordering=dependency_ordering,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )
+
+    def rlspolicies(
+        self,
+        creations_only: bool = False,
+        drops_only: bool = False,
+        modifications: bool = True,
+        dependency_ordering: bool = False,
+        add_dependents_for_modified: bool = False,
+    ) -> Statements:
+        return statements_for_changes(
+            self.i_from.rlspolicies,
+            self.i_target.rlspolicies,
+            creations_only=creations_only,
+            drops_only=drops_only,
+            modifications=modifications,
+            dependency_ordering=dependency_ordering,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )
+
+    def triggers(
+        self,
+        creations_only: bool = False,
+        drops_only: bool = False,
+        modifications: bool = True,
+        dependency_ordering: bool = False,
+        add_dependents_for_modified: bool = False,
+    ) -> Statements:
+        return statements_for_changes(
+            self.i_from.triggers,
+            self.i_target.triggers,
+            creations_only=creations_only,
+            drops_only=drops_only,
+            modifications=modifications,
+            dependency_ordering=dependency_ordering,
+            add_dependents_for_modified=add_dependents_for_modified,
+        )

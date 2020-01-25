@@ -26,6 +26,7 @@ flake8 = "*"
 isort = "*"
 black = { version = ">=19.10b0", python=">=3.6" }
 mypy = "^0.761"
+sqlalchemy-stubs = "^0.3"
 
 [tool.poetry.scripts]
 migra = 'migra:do_command'
